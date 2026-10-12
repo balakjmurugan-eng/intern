@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather App</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,Helvetica,sans-serif}
+body{min-height:100vh;background:linear-gradient(135deg,#0077b6,#00b4d8);display:flex;justify-content:center;padding:40px 16px;color:#222}
+.app{width:100%;max-width:480px}
+h1{color:#fff;text-align:center;font-size:28px}
+.by{color:#e8f6fb;text-align:center;font-size:14px;margin:4px 0 20px}
+.search{display:flex;gap:8px;margin-bottom:10px}
+.search input{flex:1;padding:12px 14px;font-size:16px;border:none;border-radius:8px;outline:none}
+.search button{padding:12px 18px;font-size:16px;border:none;border-radius:8px;background:#023e8a;color:#fff;cursor:pointer}
+.search button:hover{background:#012a63}
+.units{text-align:right;margin-bottom:14px}
+.units button{padding:5px 12px;border:1px solid #fff;background:transparent;color:#fff;border-radius:999px;cursor:pointer;font-size:13px}
+.units button.active{background:#fff;color:#0077b6}
+.card{background:#fff;border-radius:12px;padding:24px;box-shadow:0 4px 14px rgba(0,0,0,.2);margin-bottom:16px}
+.city{font-size:22px;font-weight:bold}
+.big{display:flex;align-items:center;justify-content:space-between;margin:12px 0}
+.temp{font-size:54px;font-weight:bold;color:#0077b6}
+.icon{font-size:60px}
+.desc{color:#555;margin-bottom:12px}
+.details{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center}
+.details div{background:#eef8ff;border-radius:8px;padding:10px;font-size:13px}
+.details b{display:block;font-size:16px;color:#023e8a;margin-top:4px}
+.forecast{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;text-align:center}
+.forecast div{background:#eef8ff;border-radius:8px;padding:10px 4px;font-size:13px}
+.forecast .i{font-size:24px;margin:4px 0}
+.msg{text-align:center;color:#fff;padding:14px;font-size:15px}
+.error{background:#fff;color:#c0392b;border-radius:8px;font-weight:bold}
+.hidden{display:none}
+.recent{margin-bottom:14px;display:flex;flex-wrap:wrap;gap:6px}
+.recent button{background:rgba(255,255,255,.25);color:#fff;border:none;border-radius:999px;padding:4px 12px;cursor:pointer;font-size:13px}
+@media(max-width:420px){.temp{font-size:42px}.forecast{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Weather App</h1>
+  <p class="by">- by J.Balamurugan</p>
+
+  <div class="search">
+    <input type="text" id="cityInput" placeholder="Enter city name (e.g. Chennai)">
+    <button id="searchBtn">Search</button>
+  </div>
+  <div class="units">
+    <button id="cBtn" class="active">°C</button>
+    <button id="fBtn">°F</button>
+  </div>
+  <div class="recent" id="recent"></div>
+
+  <p class="msg hidden" id="loading">Loading weather...</p>
+  <p class="msg error hidden" id="error"></p>
+
+  <div id="result" class="hidden">
+    <div class="card">
+      <div class="city" id="cityName"></div>
+      <div class="big"><div class="temp" id="temp"></div><div class="icon" id="icon"></div></div>
+      <div class="desc" id="desc"></div>
+      <div class="details">
+        <div>Feels like<b id="feels"></b></div>
+        <div>Humidity<b id="hum"></b></div>
+        <div>Wind<b id="wind"></b></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:12px">5-Day Forecast</h3>
+      <div class="forecast" id="forecast"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Weather data from Open-Meteo (free, no API key needed)
+const GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
+const WEATHER_URL = "https://api.open-meteo.com/v1/forecast";
+
+// WMO weather code -> [description, emoji]
+const CODES = {
+  0:["Clear sky","☀️"],1:["Mainly clear","🌤️"],2:["Partly cloudy","⛅"],3:["Overcast","☁️"],
+  45:["Fog","🌫️"],48:["Rime fog","🌫️"],51:["Light drizzle","🌦️"],53:["Drizzle","🌦️"],55:["Heavy drizzle","🌧️"],
+  61:["Light rain","🌧️"],63:["Rain","🌧️"],65:["Heavy rain","🌧️"],71:["Light snow","🌨️"],73:["Snow","🌨️"],75:["Heavy snow","❄️"],
+  80:["Rain showers","🌦️"],81:["Rain showers","🌧️"],82:["Violent showers","⛈️"],95:["Thunderstorm","⛈️"],96:["Thunderstorm with hail","⛈️"],99:["Thunderstorm with hail","⛈️"]
+};
+const info = c => CODES[c] || ["Unknown","🌡️"];
+
+let unit = "celsius";
+let lastCity = null;
+
+const $ = id => document.getElementById(id);
+
+function show(id, on){ $(id).classList.toggle("hidden", !on); }
+
+function showError(message){
+  show("loading", false); show("result", false);
+  $("error").textContent = message; show("error", true);
+}
+
+// Fetch with error handling (HTTP errors + network errors)
+async function getJSON(url){
+  const res = await fetch(url);
+  if(!res.ok) throw new Error("Server error (" + res.status + "). Please try again.");
+  return res.json();
+}
+
+async function fetchWeather(city){
+  show("error", false); show("result", false); show("loading", true);
+  try{
+    const geo = await getJSON(GEO_URL + "?name=" + encodeURIComponent(city) + "&count=1");
+    if(!geo.results || geo.results.length === 0){
+      throw new Error('City "' + city + '" not found. Check the spelling.');
+    }
+    const place = geo.results[0];
+    const url = WEATHER_URL + "?latitude=" + place.latitude + "&longitude=" + place.longitude +
+      "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code" +
+      "&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5" +
+      "&temperature_unit=" + unit;
+    const data = await getJSON(url);
+    render(place, data);
+    saveRecent(place.name);
+    lastCity = place.name;
+  }catch(err){
+    if(err instanceof TypeError) showError("Network error. Check your internet connection.");
+    else showError(err.message);
+  }
+}
+
+function render(place, data){
+  const u = unit === "celsius" ? "°C" : "°F";
+  const cur = data.current;
+  const [text, emoji] = info(cur.weather_code);
+  $("cityName").textContent = place.name + (place.country ? ", " + place.country : "");
+  $("temp").textContent = Math.round(cur.temperature_2m) + u;
+  $("icon").textContent = emoji;
+  $("desc").textContent = text;
+  $("feels").textContent = Math.round(cur.apparent_temperature) + u;
+  $("hum").textContent = cur.relative_humidity_2m + "%";
+  $("wind").textContent = cur.wind_speed_10m + " km/h";
+
+  $("forecast").innerHTML = "";
+  data.daily.time.forEach((d, i) => {
+    const day = new Date(d).toLocaleDateString("en-IN", {weekday:"short"});
+    const [t, e] = info(data.daily.weather_code[i]);
+    const div = document.createElement("div");
+    div.innerHTML = "<b>" + day + "</b><div class='i' title='" + t + "'>" + e + "</div>" +
+      Math.round(data.daily.temperature_2m_max[i]) + "° / " + Math.round(data.daily.temperature_2m_min[i]) + "°";
+    $("forecast").appendChild(div);
+  });
+  show("loading", false); show("error", false); show("result", true);
+}
+
+// Recent searches (kept in localStorage)
+function saveRecent(name){
+  let list = JSON.parse(localStorage.getItem("recentCities") || "[]");
+  list = [name, ...list.filter(c => c !== name)].slice(0, 4);
+  localStorage.setItem("recentCities", JSON.stringify(list));
+  renderRecent();
+}
+function renderRecent(){
+  const list = JSON.parse(localStorage.getItem("recentCities") || "[]");
+  $("recent").innerHTML = "";
+  list.forEach(c => {
+    const b = document.createElement("button");
+    b.textContent = c;
+    b.onclick = () => { $("cityInput").value = c; fetchWeather(c); };
+    $("recent").appendChild(b);
+  });
+}
+
+function search(){
+  const city = $("cityInput").value.trim();
+  if(!city){ showError("Please enter a city name."); return; }
+  fetchWeather(city);
+}
+
+function setUnit(u){
+  unit = u;
+  $("cBtn").classList.toggle("active", u === "celsius");
+  $("fBtn").classList.toggle("active", u === "fahrenheit");
+  if(lastCity) fetchWeather(lastCity);
+}
+
+$("searchBtn").addEventListener("click", search);
+$("cityInput").addEventListener("keydown", e => { if(e.key === "Enter") search(); });
+$("cBtn").addEventListener("click", () => setUnit("celsius"));
+$("fBtn").addEventListener("click", () => setUnit("fahrenheit"));
+
+renderRecent();
+</script>
+</body>
+</html>
