@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Management System</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,Helvetica,sans-serif}
+body{background:#f4f4f4;color:#333}
+header{background:linear-gradient(135deg,#0077b6,#00b4d8);color:#fff;text-align:center;padding:30px 16px}
+header h1{font-size:30px}
+header p{margin-top:6px;font-size:14px}
+.wrap{width:92%;max-width:1000px;margin:20px auto}
+.card{background:#fff;border-radius:10px;padding:22px;margin-bottom:20px;box-shadow:0 4px 10px rgba(0,0,0,.15)}
+h2{color:#0077b6;border-bottom:3px solid #0077b6;padding-bottom:5px;margin-bottom:16px;font-size:20px}
+form{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+label{font-size:13px;font-weight:bold;display:block;margin-bottom:4px}
+input,select{width:100%;padding:10px;font-size:15px;border:1px solid #ccc;border-radius:6px}
+input:focus,select:focus{outline:none;border-color:#0077b6}
+.err{color:#c0392b;font-size:12px;min-height:14px;margin-top:2px}
+.actions{grid-column:1/-1;display:flex;gap:10px}
+button{padding:10px 18px;font-size:15px;border:none;border-radius:6px;cursor:pointer;color:#fff}
+.primary{background:#0077b6}.primary:hover{background:#005f8f}
+.secondary{background:#777}
+.edit{background:#f39c12;padding:6px 12px;font-size:13px}
+.del{background:#e74c3c;padding:6px 12px;font-size:13px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.top input{max-width:300px}
+.count{font-size:14px;color:#666}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:640px}
+th{background:#0077b6;color:#fff;text-align:left}
+th,td{padding:10px;border:1px solid #ddd;font-size:14px}
+tr:nth-child(even){background:#f2f2f2}
+.empty{text-align:center;color:#888;padding:20px}
+@media(max-width:600px){form{grid-template-columns:1fr}header h1{font-size:22px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Student Management System</h1>
+  <p>Internship Project - by J.Balamurugan</p>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2 id="formTitle">Add Student</h2>
+    <form id="studentForm" novalidate>
+      <div><label for="name">Full Name</label><input id="name" type="text"><div class="err" id="nameErr"></div></div>
+      <div><label for="roll">Roll Number</label><input id="roll" type="text"><div class="err" id="rollErr"></div></div>
+      <div><label for="dept">Department</label>
+        <select id="dept">
+          <option value="">-- Select --</option>
+          <option>CSE</option><option>IT</option><option>ECE</option><option>EEE</option><option>MECH</option><option>CIVIL</option>
+        </select><div class="err" id="deptErr"></div></div>
+      <div><label for="year">Year</label>
+        <select id="year">
+          <option value="">-- Select --</option>
+          <option>1</option><option>2</option><option>3</option><option>4</option>
+        </select><div class="err" id="yearErr"></div></div>
+      <div><label for="email">Email</label><input id="email" type="email"><div class="err" id="emailErr"></div></div>
+      <div><label for="phone">Phone</label><input id="phone" type="text" maxlength="10"><div class="err" id="phoneErr"></div></div>
+      <div class="actions">
+        <button type="submit" class="primary" id="saveBtn">Add Student</button>
+        <button type="button" class="secondary" id="cancelBtn" style="display:none">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Student Records</h2>
+    <div class="top">
+      <input type="text" id="search" placeholder="Search by name, roll no or department...">
+      <span class="count" id="count"></span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>#</th><th>Name</th><th>Roll No</th><th>Dept</th><th>Year</th><th>Email</th><th>Phone</th><th>Actions</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const KEY = "students";
+let students = JSON.parse(localStorage.getItem(KEY) || "[]");
+let editingId = null;
+
+const $ = id => document.getElementById(id);
+const fields = ["name","roll","dept","year","email","phone"];
+
+function save(){ localStorage.setItem(KEY, JSON.stringify(students)); }
+
+// ---------- READ ----------
+function render(){
+  const q = $("search").value.trim().toLowerCase();
+  const list = students.filter(s => (s.name + " " + s.roll + " " + s.dept).toLowerCase().includes(q));
+  const tbody = $("tbody");
+  tbody.innerHTML = "";
+  if(list.length === 0){
+    tbody.innerHTML = "<tr><td class='empty' colspan='8'>No students found.</td></tr>";
+  }
+  list.forEach((s, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td>" + (i+1) + "</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>";
+    const c = tr.children;
+    c[1].textContent = s.name; c[2].textContent = s.roll; c[3].textContent = s.dept;
+    c[4].textContent = s.year; c[5].textContent = s.email; c[6].textContent = s.phone;
+    const e = document.createElement("button"); e.className = "edit"; e.textContent = "Edit";
+    e.onclick = () => startEdit(s.id);
+    const d = document.createElement("button"); d.className = "del"; d.textContent = "Delete";
+    d.onclick = () => removeStudent(s.id);
+    c[7].append(e, " ", d);
+    tbody.appendChild(tr);
+  });
+  $("count").textContent = "Showing " + list.length + " of " + students.length + " students";
+}
+
+// ---------- VALIDATION ----------
+function validate(){
+  let ok = true;
+  const v = id => $(id).value.trim();
+  const set = (id, msg) => { $(id + "Err").textContent = msg; if(msg) ok = false; };
+
+  set("name", v("name").length < 3 ? "Enter a name (min 3 letters)" : "");
+  set("roll", !v("roll") ? "Roll number is required"
+    : students.some(s => s.roll.toLowerCase() === v("roll").toLowerCase() && s.id !== editingId) ? "Roll number already exists" : "");
+  set("dept", !v("dept") ? "Select a department" : "");
+  set("year", !v("year") ? "Select a year" : "");
+  set("email", !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v("email")) ? "Enter a valid email" : "");
+  set("phone", !/^[6-9]\d{9}$/.test(v("phone")) ? "Enter a valid 10-digit mobile number" : "");
+  return ok;
+}
+
+// ---------- CREATE / UPDATE ----------
+$("studentForm").addEventListener("submit", e => {
+  e.preventDefault();
+  if(!validate()) return;
+  const data = {};
+  fields.forEach(f => data[f] = $(f).value.trim());
+  if(editingId){
+    students = students.map(s => s.id === editingId ? { ...s, ...data } : s);
+  } else {
+    students.push({ id: Date.now(), ...data });
+  }
+  save(); resetForm(); render();
+});
+
+function startEdit(id){
+  const s = students.find(x => x.id === id);
+  fields.forEach(f => $(f).value = s[f]);
+  editingId = id;
+  $("formTitle").textContent = "Edit Student";
+  $("saveBtn").textContent = "Update Student";
+  $("cancelBtn").style.display = "inline-block";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function resetForm(){
+  $("studentForm").reset();
+  fields.forEach(f => $(f + "Err").textContent = "");
+  editingId = null;
+  $("formTitle").textContent = "Add Student";
+  $("saveBtn").textContent = "Add Student";
+  $("cancelBtn").style.display = "none";
+}
+$("cancelBtn").addEventListener("click", resetForm);
+
+// ---------- DELETE ----------
+function removeStudent(id){
+  if(!confirm("Delete this student record?")) return;
+  students = students.filter(s => s.id !== id);
+  save();
+  if(editingId === id) resetForm();
+  render();
+}
+
+$("search").addEventListener("input", render);
+render();
+</script>
+</body>
+</html>
